@@ -6,9 +6,15 @@ from PIL import Image
 import cv2
 from pptx import Presentation
 
-DATA_DIR = "../data/sample/샘플/"
-OUT_DIR = "../output/parsed/"
-LOG_FILE = "../output/parse_log.txt"
+from sentence_transformers import SentenceTransformer, util
+
+import nltk
+nltk.download('punkt', quiet=True)
+
+# Use path based on launching from project root!
+DATA_DIR = r"C:\Users\srima\Desktop\A3_SETS\occupational_safety_\data\sample\샘플"
+OUT_DIR = "output/parsed/"
+LOG_FILE = "output/parse_log.txt"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 def log(message):
@@ -50,7 +56,7 @@ def parse_img(filepath):
 def parse_video(filepath):
     text = ""
     cap = cv2.VideoCapture(filepath)
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 1
     count = 0
     frame_num = 0
     while True:
@@ -78,7 +84,27 @@ def parse_pptx(filepath):
     return text
 
 def chunk_text(text):
-    chunks = [chunk.strip() for chunk in text.split('\n\n') if chunk.strip()]
+    # Classic paragraph-based chunking
+    return [chunk.strip() for chunk in text.split('\n\n') if chunk.strip()]
+
+def semantic_chunk_text(text, threshold=0.75):
+    sentences = nltk.sent_tokenize(text)
+    if not sentences:
+        return []
+    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    embeddings = model.encode(sentences)
+    chunks = []
+    current_chunk = [sentences[0]]
+
+    for i in range(1, len(sentences)):
+        sim = util.cos_sim(embeddings[i - 1], embeddings[i]).item()
+        if sim < threshold:
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [sentences[i]]
+        else:
+            current_chunk.append(sentences[i])
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
     return chunks
 
 if __name__ == "__main__":
@@ -104,10 +130,21 @@ if __name__ == "__main__":
         if not text.strip():
             log(f"[EMPTY] No text extracted: {fpath}")
             continue
+
+        # Save classic (paragraph) chunks
         chunks = chunk_text(text)
         out_file = os.path.join(OUT_DIR, fname + ".chunks.txt")
         with open(out_file, "w", encoding="utf-8") as f:
             for i, chunk in enumerate(chunks):
-                f.write(f"[Chunk {i+1}]\n{chunk}\n\n")
+                f.write(f"[Chunk {i + 1}]\n{chunk}\n\n")
         log(f"[DONE] Saved {out_file}; {len(chunks)} chunks")
+
+        # Save semantic chunks
+        sem_chunks = semantic_chunk_text(text)
+        sem_out_file = os.path.join(OUT_DIR, fname + ".semantic_chunks.txt")
+        with open(sem_out_file, "w", encoding="utf-8") as f:
+            for i, chunk in enumerate(sem_chunks):
+                f.write(f"[Semantic Chunk {i + 1}]\n{chunk}\n\n")
+        log(f"[DONE][Semantic] Saved {sem_out_file}; {len(sem_chunks)} semantic chunks")
+
     log("==== Batch Parsing Finished ====")
