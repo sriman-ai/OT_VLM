@@ -23,8 +23,9 @@ def extract_frames_from_video(video_path, output_dir, seconds_interval=1):
     print(f"{video_path}: {count} frames extracted.")
 
 # Usage
-video_input_folder = r"C:\Users\srima\Desktop\A3_SETS\occupational_safety_\data\sample\샘플"
-video_output_folder = r"C:\Users\srima\Desktop\A3_SETS\occupational_safety_\output\video_frames"
+video_input_folder = r"/Users/srimanmohapatra/Downloads/occupational_safety_/data/Video_Input"
+video_output_folder = r"/Users/srimanmohapatra/Downloads/occupational_safety_/output/video_frames"
+
 for fname in os.listdir(video_input_folder):
     if fname.lower().endswith((".mp4", ".avi", ".mov")):
         extract_frames_from_video(os.path.join(video_input_folder, fname), video_output_folder, seconds_interval=1)

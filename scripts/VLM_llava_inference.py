@@ -1,43 +1,82 @@
 import os
 from PIL import Image
-from transformers import AutoTokenizer, AutoModelForVision2Seq
+import torch
+from transformers import AutoProcessor, AutoModelForVision2Seq
 
-input_imgs = r"C:\Users\srima\Desktop\A3_SETS\occupational_safety_\output\video_frames"
-out_file = r"C:\Users\srima\Desktop\A3_SETS\occupational_safety_\output\vlm_video_results.txt"
+# ===== Paths =====
+input_imgs = "/Users/srimanmohapatra/Downloads/occupational_safety_/output/video_frames"
+out_file   = "/Users/srimanmohapatra/Downloads/occupational_safety_/output/vlm_video_results.txt"
 os.makedirs(os.path.dirname(out_file), exist_ok=True)
 
+# ===== Single concise question (for speed) =====
 Q_LIST = [
-    "Describe the situation in this frame.",
-    "Are there any safety signs or warnings visible?",
-    "What unsafe condition or process can you see, if any?",
+    "Describe the situation in this frame and explain any unsafe condition or risk you can see, with one safety recommendation."
 ]
 
-MODEL_NAME = "llava-hf/llava-1.5-7b-hf"
+# ===== Vision-language model (LLaVA) =====
+MODEL_NAME = "llava-hf/llava-1.5-7b-hf"  # same model id
 
-def vlm_qa(image_path, queries, model, tokenizer):
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+processor = AutoProcessor.from_pretrained(MODEL_NAME)
+model = AutoModelForVision2Seq.from_pretrained(
+    MODEL_NAME,
+    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+).to(device)
+
+
+def vlm_qa(image_path, queries, model, processor):
+    """Run LLaVA on one image for a list of questions."""
     img = Image.open(image_path).convert("RGB")
     results = []
+
     for q in queries:
-        prompt = f"[INST] {q} [/INST]"
-        out = model.generate(inputs={"pixel_values": model.preprocess(img), "input_ids": tokenizer(prompt, return_tensors="pt").input_ids})
-        answer = tokenizer.decode(out[0], skip_special_tokens=True)
-        results.append((q, answer))
+        # LLaVA requires the <image> token in the prompt
+        prompt = f"USER: <image>\n{q}\nASSISTANT:"
+        inputs = processor(text=prompt, images=img, return_tensors="pt").to(device)
+
+        with torch.no_grad():
+            output_ids = model.generate(
+                **inputs,
+                max_new_tokens=128,   # smaller for faster CPU inference
+                do_sample=False,
+            )
+
+        answer = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
+        results.append((q, answer.strip()))
+
     return results
 
-if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForVision2Seq.from_pretrained(MODEL_NAME)
 
-    all_results = []
-    for fname in os.listdir(input_imgs):
-        if fname.lower().endswith((".jpg", ".png", ".jpeg", ".bmp")):
-            fpath = os.path.join(input_imgs, fname)
-            anslist = vlm_qa(fpath, Q_LIST, model, tokenizer)
-            all_results.append((fname, anslist))
-            print(f"Done: {fname}")
-    with open(out_file, "w", encoding="utf-8") as f:
-        for fname, qas in all_results:
-            f.write(f"=== {fname} ===\n")
-            for q, a in qas:
-                f.write(f"Q: {q}\nA: {a}\n\n")
-    print(f"All outputs saved to {out_file}")
+def main():
+    img_files = sorted(
+        f for f in os.listdir(input_imgs)
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    )
+
+    if not img_files:
+        print(f"No images found in {input_imgs}")
+        return
+
+    # ===== LIMIT TO 1 FRAME FOR MAC DEMO =====
+    MAX_FRAMES = 1
+    img_files = img_files[:MAX_FRAMES]
+
+    with open(out_file, "w", encoding="utf-8") as f_out:
+        for idx, fname in enumerate(img_files):
+            img_path = os.path.join(input_imgs, fname)
+            print(f"[{idx+1}/{len(img_files)}] Processing {img_path}")
+
+            qa_pairs = vlm_qa(img_path, Q_LIST, model, processor)
+
+            f_out.write(f"===== IMAGE: {fname} =====\n")
+            for q, a in qa_pairs:
+                f_out.write(f"Q: {q}\n")
+                f_out.write(f"A: {a}\n\n")
+            f_out.write("\n")
+
+    print(f"Done. Results saved to: {out_file}")
+
+
+if __name__ == "__main__":
+    main()
