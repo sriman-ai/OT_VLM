@@ -1,4 +1,4 @@
-# Raw data
+# Raw and large data
 data/
 docs/
 
@@ -7,14 +7,14 @@ output/video_frames/
 data/sample/Video_Input/
 data/Video_Input/
 
-# RAG artifacts that can be regenerated
+# RAG intermediate artifacts
 output/parsed/
 output/chunk_texts.txt
 output/chunk_vectors.npy
 output/parse_log.txt
 output/vlm_video_results.txt
 
-# Python / venv stuff
+# Python / env
 .venv/
 __pycache__/
 *.pyc
