@@ -1,80 +1,207 @@
-**_Document Batch Parser:**_
-This repository contains a Python batch script for parsing and chunking occupational safety documents in Korean and English.
-It handles PDF, TXT, PowerPoint (PPTX), image, and video files, extracting text content and generating both classic (paragraph-based) and semantic chunks for downstream AI or data processing.
+# Occupational Safety VLM & RAG
 
-**__Supported File Types:**__
-PDF (.pdf) — Digital and scanned; performs OCR if text extraction fails
+This project builds an AI assistant for occupational safety training and incident review.  
+It combines **text RAG over safety documents** with a **vision‑language model (VLM)** that analyzes safety videos frame by frame.
 
-Text (.txt) — Supports Korean (CP949/EUC-KR) and UTF-8 encodings
+---
 
-Images (.jpg, .jpeg, .png, .bmp) — OCR via Tesseract (Korean + English)
+## Features
 
-Video (.mp4, .avi, .mov) — OCR on sampled frames (visual text only)
+- **Document RAG (text)**
+  - Parses PDF/HWP/PPT safety documents into clean text.
+  - Applies semantic chunking to create meaningful sections.
+  - Embeds chunks and enables similarity search for Q&A over accident cases and technical guidelines.
 
-PowerPoint (.pptx) — Extracts all visible slide text
+- **Video → VLM analysis**
+  - Extracts frames from safety training videos (MP4, etc.).
+  - Runs a LLaVA‑style VLM on each frame.
+  - Answers safety‑focused questions per frame (what is happening, risks, recommended controls).
 
-**_Unsupported:**_
+- **Multimodal design**
+  - Clean separation between **text pipeline** (RAG) and **image pipeline** (VLM).
+  - Ready to be extended into multimodal RAG (using VLM captions as queries into the text corpus).
 
-HWP (.hwp) — Proprietary Hangul format, requires conversion outside Python
+---
 
-**_Output_**
-Chunked results in /output/parsed/
-Each input file generates:
+## Repository Structure
 
-[originalname].chunks.txt — Classic chunks (one per paragraph/slide/etc.)
+```├─ scripts/
+│ ├─ extract_video_frames.py # OpenCV video → frame extractor
+│ ├─ VLM_llava_inference.py # Runs VLM over frames and saves Q&A
+│ ├─ batch_parse.py # (Optional) bulk PDF/HWP parsing
+│ ├─ vectorize_chunks.py # Builds embeddings from semantic chunks
+│ └─ qa_annotation_app.py # (Optional) tooling for manual QA review
+├─ output/
+│ ├─ video_frames/ # Extracted frames (git‑ignored)
+│ ├─ parsed/ # Parsed text files (git‑ignored)
+│ ├─ chunk_texts.txt # All text chunks
+│ ├─ chunk_vectors.npy # Embedding matrix
+│ └─ vlm_video_results.txt # VLM answers per frame
+├─ data/ # Local raw data: videos, PDFs, HWP, PPT (git‑ignored)
+├─ .gitignore
+└─ README.md
 
-[originalname].semantic_chunks.txt — Semantic chunks (context-based grouping; see code for tunable threshold)
 
-Full log in /output/parse_log.txt
+> Note: Large raw data files (videos, PDFs, etc.) and generated artifacts are ignored by Git.  
+> Only code and small text metadata are versioned.
 
-Tracks parsing status, errors, and chunk counts for all files
+---
 
-**_Install Requirements**_
-Install Python dependencies:
+## Setup
 
-bash:
-pip install pymupdf pdf2image pytesseract pillow opencv-python python-pptx sentence-transformers nltk
-You also need:
+### 1. Create and activate environment
 
-Tesseract OCR (in your system PATH)
+python -m venv .venv
+source .venv/bin/activate # On macOS / Linux
 
-Poppler (in PATH, for scanned PDFs)
+.venv\Scripts\activate # On Windows PowerShell
+text
 
-**_How To Use**_
-Place all documents to be parsed in data/sample/샘플 (or adjust DATA_DIR in the script).
+### 2. Install dependencies
 
-Adjust OUT_DIR as needed (default is output/parsed/).
+pip install -r requirements.txt
 
-**_Run the script:**_
+text
 
-bash
+Dependencies include:
+
+- `torch`, `transformers`, `accelerate` – for VLM/LLM inference.
+- `opencv-python`, `Pillow` – for video frame extraction and image loading.
+- `numpy`, `scikit-learn` or vector DB client – for embeddings and retrieval.
+
+(Adjust this list to match your actual `requirements.txt`.)
+
+---
+
+## Usage
+
+### A. Video → frame extraction
+
+Place your input videos under:
+
+data/sample/Video_Input/
+
+text
+
+Then run:
+
+python scripts/extract_video_frames.py
+
+text
+
+This script:
+
+- Reads every `.mp4` / `.avi` / `.mov` in `data/sample/Video_Input/`.
+- Writes frames as `.jpg` into:
+
+output/video_frames/
+
+text
+
+with filenames like `videoName_frame0000.jpg`.
+
+### B. VLM inference on frames
+
+Configure the paths at the top of `scripts/VLM_llava_inference.py`:
+
+input_imgs = "/absolute/path/to/output/video_frames"
+out_file = "/absolute/path/to/output/vlm_video_results.txt"
+MODEL_NAME = "llava-hf/llava-1.5-7b-hf" # or another compatible VLM
+
+text
+
+Run:
+
+python scripts/VLM_llava_inference.py
+
+text
+
+The script:
+
+- Loops over frames in `input_imgs`.
+- Asks a small set of safety‑focused questions per frame.
+- Saves the Q&A blocks into `vlm_video_results.txt`.
+
+### C. Text RAG pipeline (optional)
+
+If you have preprocessed text chunks (e.g., from safety PDFs):
+
+1. Run the parsing/semantic chunking script (if included):
+
 python scripts/batch_parse.py
 
-**_Outputs:**_
+text
 
-See chunked results in output/parsed/
+2. Build embeddings:
 
-All logs in output/parse_log.txt
+python scripts/vectorize_chunks.py
 
-**_Example Output/Log**_
+text
 
-[PDF][Digital] Parsed: .../화재사례.pdf
-[DONE] Saved .../화재사례.pdf.chunks.txt; 5 chunks
-[DONE][Semantic] Saved .../화재사례.pdf.semantic_chunks.txt; 18 semantic chunks
-[PPTX] Parsed: .../안전교육자료.pptx
-[DONE] Saved .../안전교육자료.pptx.chunks.txt; 10 chunks
-[SKIP] Unsupported file: .../some_file.hwp
-Open any .semantic_chunks.txt and .chunks.txt in /output/parsed/ for chunked text output.
+This produces:
 
-**_Notes_**
-.hwp files are skipped: convert them to TXT or PDF before parsing.
+- `output/chunk_texts.txt` – one chunk per line.
+- `output/chunk_vectors.npy` – embedding matrix aligned with chunks.
 
-Video files extract only visible frame text (no audio transcript).
+You can then create a small retrieval script that:
 
-Script can be extended for DOCX, audio, or new formats if desired.
+- Embeds a user question.
+- Finds top‑k similar chunks.
+- Calls an LLM with the question + retrieved context.
 
-Semantic chunking is controlled by a threshold parameter (default 0.75). Lower for finer chunks, raise for coarser grouping.
+---
 
-**_Note on HWP Files**_
-This project does not natively support .hwp.
-Before running the batch parser, convert all .hwp files to .txt or .pdf using Hancom Office batch, VBA script, or any other tool. After conversion, process as usual.
+## Example: End‑to‑end scenario
+
+1. Safety officer uploads:
+   - A training video about PPE.
+   - A set of accident case PDFs.
+
+2. System runs:
+   - **Video pipeline**: extract frames → VLM produces descriptions and risk assessments.
+   - **Text pipeline**: parse PDFs → semantic chunking → embeddings.
+
+3. User asks:
+   > “What are the main risks shown in this video and which regulations or guidelines apply?”
+
+4. App:
+   - Uses VLM output to summarize risks (e.g., “no safety helmet”, “working at height without guardrail”).
+   - Uses those descriptions as queries into the RAG index.
+   - Returns both:
+     - Visual explanation of what’s wrong in the frames.
+     - Relevant text snippets from accident case reports and measurement guidelines.
+
+---
+
+## Design Notes
+
+- **Separation of concerns**:  
+  Video/VLM logic and document/RAG logic are kept in separate scripts so they can be scaled independently or deployed as separate services.
+
+- **Reproducibility**:  
+  All heavy data (videos, PDFs, embeddings) are regenerated from code and excluded via `.gitignore`. Only code and configuration live in the repo, which keeps pushes small and avoids leaking private data.
+
+- **Extensibility**:  
+  You can swap in:
+  - A different VLM (e.g., LLaVA‑Next or other multimodal models).
+  - A vector database (Milvus, FAISS, etc.) instead of `.npy` files.
+  - A web UI (Streamlit / FastAPI) to expose the pipelines.
+
+---
+
+## How to Contribute
+
+1. Fork the repository.
+2. Create a feature branch:
+
+git checkout -b feature/your-feature-name
+
+text
+
+3. Make your changes and add tests or example notebooks where useful.
+4. Submit a pull request with:
+- A clear description of the change.
+- Before/after behavior (if applicable).
+- Any new dependencies or configuration.
+
+---
