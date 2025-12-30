@@ -1,4 +1,20 @@
-.venv
-data
-output
+# Raw data
+data/
+docs/
 
+# Video inputs and extracted frames
+output/video_frames/
+data/sample/Video_Input/
+data/Video_Input/
+
+# RAG artifacts that can be regenerated
+output/parsed/
+output/chunk_texts.txt
+output/chunk_vectors.npy
+output/parse_log.txt
+output/vlm_video_results.txt
+
+# Python / venv stuff
+.venv/
+__pycache__/
+*.pyc
